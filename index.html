@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=3">
+  <link rel="stylesheet" href="css/style.css?v=4">
 </head>
 <body>
 <main id="app">
@@ -46,6 +46,16 @@
     </div>
   </section>
 
+  <!-- CARREGANDO O VÍDEO (todos precisam carregar antes da contagem) -->
+  <section id="tela-carregando" class="tela tela-centro" hidden>
+    <div class="carregando-coluna">
+      <h2 class="titulo-fase">Carregando o vídeo…</h2>
+      <p id="carregando-meu" class="fase-sub">Seu vídeo está carregando…</p>
+      <div id="fila-carregando" class="fila parede"></div>
+      <p id="carregando-status" class="status centro"></p>
+    </div>
+  </section>
+
   <!-- CONTAGEM -->
   <section id="tela-contagem" class="tela tela-centro" hidden>
     <p class="contagem-texto">Prepare-se. O vídeo começa em</p>
@@ -62,6 +72,7 @@
       <div class="barra"><div id="video-barra" class="barra-preenchida"></div></div>
       <div class="video-moldura">
         <div id="video-frame"></div>
+        <button id="btn-som" class="btn btn-principal btn-som" hidden>🔊 Ativar som</button>
       </div>
     </div>
   </section>
@@ -100,6 +111,6 @@
     </div>
   </section>
 </main>
-<script type="module" src="js/game.js?v=3"></script>
+<script type="module" src="js/game.js?v=4"></script>
 </body>
 </html>

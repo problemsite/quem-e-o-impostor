@@ -1,9 +1,9 @@
 import {
   db, ref, onValue, update, set, serverTimestamp, onDisconnect,
   agora, mmss, esc, garantirLogin, idYoutube, podeSubstituir, listaVideos, palavrasDe,
-  avancarFase, enviarPalavra, checarProntosVotar, resultado, tentarCriarPartida, tentarLimpeza, limparSaidos,
+  avancarFase, enviarPalavra, checarProntosVotar, checarTodosCarregaram, resultado, tentarCriarPartida, tentarLimpeza, limparSaidos,
   MIN_JOGADORES, MAX_JOGADORES, PALAVRAS_POR_JOGADOR, TEMPOS, FOTO_VAZIA
-} from "./common.js";
+} from "./common.js?v=4";
 
 const $ = s => document.querySelector(s);
 
@@ -65,19 +65,28 @@ function mostrar(id) {
   document.querySelectorAll(".tela").forEach(t => { t.hidden = t.id !== id; });
   $("#tela-video").classList.remove("pre-carregando");
   $("#carregando").hidden = true;
-  if (id === "tela-contagem" && video.id) {
-    // o vídeo continua carregando atrás da contagem
+  const carregandoAtras = id === "tela-carregando" || id === "tela-contagem";
+  if (carregandoAtras && video.id) {
+    // o vídeo carrega escondido atrás da tela de espera / contagem
     $("#tela-video").hidden = false;
     $("#tela-video").classList.add("pre-carregando");
   }
-  if (id !== "tela-video" && id !== "tela-contagem") pararVideo();
+  if (id !== "tela-video" && !carregandoAtras) pararVideo();
 }
 
 // ============================================================
-//  Vídeo: carrega durante a contagem e dá play quando ela acaba
-//  (assim ninguém começa atrasado esperando o YouTube carregar)
+//  Vídeo
+//  1) fase "loading": cada um carrega o seu vídeo (mudo, pausado no 0:00)
+//     e avisa no banco quando terminou; a contagem só começa quando todos
+//     carregaram (ou depois de TEMPOS.carregarMax).
+//  2) fase "watch": play ao mesmo tempo para todos. Um vigia confere a cada
+//     segundo: se o navegador pausou, dá play de novo; se bloqueou o som,
+//     toca mudo e mostra "Ativar som"; se ficou atrasado, pula para o ponto certo.
 // ============================================================
-const video = { player: null, pronto: false, id: "", tocar: false, inicioMs: 0, ajustar: false };
+const video = {
+  player: null, pronto: false, prontoEm: 0, bufferOk: false, falhou: false, id: "", tocar: false,
+  inicioMs: 0, ajustar: false, tentativas: 0, mudoForcado: false, ultimoVigia: 0
+};
 let apiYT = null;
 function carregarApiYT() {
   if (apiYT) return apiYT;
@@ -89,7 +98,7 @@ function carregarApiYT() {
     s.src = "https://www.youtube.com/iframe_api";
     s.onerror = falha;
     document.head.appendChild(s);
-    setTimeout(() => falha(new Error("YouTube não carregou")), 8000);
+    setTimeout(() => { if (!window.YT?.Player) falha(new Error("YouTube não carregou")); }, 15000);
   });
   return apiYT;
 }
@@ -103,11 +112,12 @@ function iframeSimples(id) { // reserva se a API do YouTube não carregar
 
 async function prepararVideo(id) {
   if (!id || video.id === id) return;
-  video.id = id; video.tocar = false; video.pronto = false;
-  try { await carregarApiYT(); } catch (e) { return; }
+  Object.assign(video, { id, tocar: false, pronto: false, prontoEm: 0, bufferOk: false, falhou: false, tentativas: 0, mudoForcado: false });
+  $("#btn-som").hidden = true;
+  try { await carregarApiYT(); } catch (e) { if (video.id === id) video.falhou = true; return; }
   if (video.id !== id) return;
   const iniciar = () => {
-    // começa mudo para o navegador deixar carregar; pausa logo que tiver imagem
+    // começa mudo (todo navegador deixa tocar mudo) só para carregar; pausa logo que tiver imagem
     video.player.mute();
     video.player.loadVideoById({ videoId: id, startSeconds: 0 });
   };
@@ -117,18 +127,48 @@ async function prepararVideo(id) {
     playerVars: { playsinline: 1, rel: 0, controls: 1, modestbranding: 1 },
     events: {
       onReady: () => { iniciar(); },
+      onError: () => { video.falhou = true; },
       onStateChange: e => {
-        if (e.data === YT.PlayerState.PLAYING && !video.tocar) {
-          video.player.pauseVideo(); video.player.seekTo(0, true); video.pronto = true;
+        const S = YT.PlayerState;
+        // antes da hora: deixa tocar mudo e escondido só até guardar o começo (ver checarBuffer)
+        if (e.data === S.PLAYING && !video.tocar) {
+          if (!video.pronto) { video.pronto = true; video.prontoEm = Date.now(); }
+          if (video.bufferOk) { video.player.pauseVideo(); video.player.seekTo(0, true); }
         }
-        if (e.data === YT.PlayerState.PLAYING && video.tocar && video.ajustar) {
+        if (e.data === S.PLAYING && video.tocar && video.ajustar) {
           const seg = pontoCerto();
           if (seg !== null) { video.ajustar = false; if (seg > 1) video.player.seekTo(seg, true); }
         }
-        if (e.data === YT.PlayerState.ENDED && video.tocar) { video.player.seekTo(0, true); video.player.playVideo(); }
+        if (e.data === S.ENDED && video.tocar) { video.player.seekTo(0, true); video.player.playVideo(); }
       }
     }
   });
+}
+
+// Enquanto espera: o vídeo toca mudo/escondido até ter ~8 s guardados,
+// aí pausa e volta para o 0:00 (pausado o YouTube quase não baixa nada).
+function checarBuffer() {
+  if (video.tocar || !video.pronto || video.bufferOk) return;
+  const p = video.player;
+  const dur = p?.getDuration?.() || 0;
+  const fr = p?.getVideoLoadedFraction?.() || 0;
+  const precisa = dur > 0 ? Math.min(0.98, 8 / dur) : 0.98;
+  if (fr >= precisa || (p?.getCurrentTime?.() || 0) >= 8 || Date.now() - video.prontoEm > 15000) {
+    video.bufferOk = true;
+    p.pauseVideo(); p.seekTo(0, true);
+  }
+}
+
+// O vídeo já tem o começo carregado? (o suficiente para começar sem travar)
+function videoCarregado() {
+  if (video.falhou) return true; // sem API do YouTube: não segura os outros
+  checarBuffer();
+  return video.bufferOk;
+}
+
+function porcentagemCarregada() {
+  const fr = video.player?.getVideoLoadedFraction?.() || 0;
+  return Math.round(fr * 100);
 }
 
 // ponto do vídeo em que todo mundo está agora (null = duração ainda desconhecida)
@@ -143,13 +183,17 @@ function pontoCerto() {
 function tocarVideo(id, inicioMs) {
   if (video.id !== id) prepararVideo(id);
   video.tocar = true;
+  video.inicioMs = inicioMs;
   const p = video.player;
   if (p?.playVideo && video.id === id) {
-    video.inicioMs = inicioMs;
     const seg = pontoCerto();
     // sem a duração ainda (acabou de carregar): ajusta quando começar a tocar
     video.ajustar = seg === null;
-    p.seekTo(seg || 0, true); p.unMute(); p.setVolume(100); p.playVideo();
+    p.seekTo(seg || 0, true);
+    if (!video.mudoForcado) { p.unMute(); p.setVolume(100); }
+    p.playVideo();
+  } else if (video.falhou) {
+    iframeSimples(id);
   } else if (!window.YT?.Player) {
     carregarApiYT().then(() => { if (video.tocar) setTimeout(() => tocarVideo(id, inicioMs), 300); })
       .catch(() => { if (video.tocar && video.id === id) iframeSimples(id); });
@@ -158,9 +202,45 @@ function tocarVideo(id, inicioMs) {
   }
 }
 
+// roda a cada segundo durante o vídeo
+function vigiarVideo() {
+  if (!video.tocar || Date.now() - video.ultimoVigia < 1000) return;
+  video.ultimoVigia = Date.now();
+  const p = video.player;
+  if (!p?.getPlayerState) return;
+  const S = YT.PlayerState, estado = p.getPlayerState();
+  if (estado === S.PLAYING) {
+    video.tentativas = 0;
+    const alvo = pontoCerto(), agoraVid = p.getCurrentTime?.() || 0;
+    if (alvo !== null && Math.abs(agoraVid - alvo) > 1.5) p.seekTo(alvo, true); // atrasou: alcança os outros
+    return;
+  }
+  if (estado === S.BUFFERING) return;
+  // pausado / parado / não começou: tenta de novo
+  video.tentativas++;
+  if (video.tentativas >= 2 && !video.mudoForcado) {
+    // o navegador não deixou tocar com som: toca mudo e pede um clique
+    video.mudoForcado = true;
+    p.mute();
+    $("#btn-som").hidden = false;
+  }
+  const alvo = pontoCerto();
+  if (alvo) p.seekTo(alvo, true);
+  p.playVideo();
+}
+
+function ativarSom() {
+  const p = video.player;
+  $("#btn-som").hidden = true;
+  if (!p?.unMute) return;
+  video.mudoForcado = false; video.tentativas = 0;
+  p.unMute(); p.setVolume(100); p.playVideo();
+}
+
 function pararVideo() {
   if (!video.id) return;
-  video.tocar = false; video.id = ""; video.pronto = false;
+  video.tocar = false; video.id = ""; video.pronto = false; video.falhou = false;
+  $("#btn-som").hidden = true;
   try { video.player?.stopVideo?.(); } catch (e) {}
   const el = $("#video-frame");
   if (el && el.tagName === "IFRAME" && !video.player) el.src = "about:blank";
@@ -201,13 +281,21 @@ function tick() {
     return;
   }
   const st = g.state || {};
-  if (["countdown", "watch", "voting"].includes(st.phase) && agora() >= st.endsAt) {
+  if (["loading", "countdown", "watch", "voting"].includes(st.phase) && agora() >= st.endsAt) {
     const chave = g.id + st.phase;
     if (ultimoAvanco.chave !== chave || Date.now() - ultimoAvanco.t > 3000) {
       ultimoAvanco = { chave, t: Date.now() };
       avancarFase(st.phase).catch(() => {});
     }
   }
+  if (st.phase === "loading") {
+    // avisa os outros quando o meu vídeo terminou de carregar
+    if (videoCarregado() && !g.carregados?.[eu]) set(ref(db, `room/game/carregados/${eu}`), true).catch(() => {});
+    checarTodosCarregaram(g, jogadores);
+    atualizarCarregando(g);
+  }
+  if (st.phase === "countdown") checarBuffer();
+  if (st.phase === "watch") vigiarVideo();
   checarProntosVotar(g, jogadores);
   atualizarTempos(g);
 }
@@ -404,6 +492,8 @@ function ligarEventos() {
   inPalavra.addEventListener("keydown", e => { if (e.key === "Enter") enviar(); });
   $("#btn-enviar").addEventListener("click", enviar);
 
+  $("#btn-som").addEventListener("click", ativarSom);
+
   $("#btn-votacao").addEventListener("click", () => {
     const g = minhaPartida();
     if (g?.state?.phase !== "discussion") return;
@@ -439,6 +529,18 @@ function fotoComSelo(u) {
 function montarFase(g, fase) {
   const muitos = g.order.length > 5 ? "muitos" : "";
   switch (fase) {
+    case "loading":
+      prepararVideo(idDoMeuVideo(g));
+      mostrar("tela-carregando");
+      $("#fila-carregando").className = `fila parede ${muitos}`;
+      $("#fila-carregando").innerHTML = g.order.map(u => `
+        <div class="suspeito ${u === eu ? "sou-eu" : ""}" data-uid="${u}">
+          ${fotoComSelo(u)}
+          <span class="suspeito-nome">${esc(nome(u, g))}</span>
+          <span class="estado-carga">carregando…</span>
+        </div>`).join("");
+      atualizarCarregando(g);
+      break;
     case "countdown":
       prepararVideo(idDoMeuVideo(g));
       mostrar("tela-contagem");
@@ -480,6 +582,26 @@ function montarFase(g, fase) {
       montarResultado(g);
       break;
   }
+}
+
+function atualizarCarregando(g) {
+  const meu = $("#carregando-meu");
+  const ok = !!g.carregados?.[eu];
+  meu.classList.toggle("ok", ok);
+  meu.textContent = ok ? "✓ Seu vídeo carregou!" : `Seu vídeo está carregando… ${video.pronto ? porcentagemCarregada() + "%" : ""}`;
+  let faltam = 0;
+  document.querySelectorAll("#fila-carregando .suspeito").forEach(el => {
+    const u = el.dataset.uid, carregouU = !!g.carregados?.[u], saiu = !jogadores[u]?.online;
+    if (!carregouU && !saiu) faltam++;
+    el.classList.toggle("carregou", carregouU);
+    const est = el.querySelector(".estado-carga");
+    est.className = `estado-carga ${carregouU ? "ok" : saiu ? "saiu" : ""}`;
+    est.textContent = carregouU ? "✓ carregou" : saiu ? "saiu" : "carregando…";
+  });
+  const resta = Math.max(0, (g.state.endsAt || 0) - agora());
+  $("#carregando-status").textContent = faltam
+    ? `Aguardando todos carregarem o vídeo (faltam ${faltam}). Se demorar, começa sozinho em ${Math.ceil(resta / 1000)} s.`
+    : "Todos carregaram! Começando…";
 }
 
 function atualizarFase(g, fase) {

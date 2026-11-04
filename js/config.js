@@ -20,6 +20,7 @@ export const DB_ROOT = "sites/quem-e-o-impostor";
 
 // 3) Tempos, em segundos
 export const TEMPOS = {
+  carregarMax: 60,    // espera no máximo isso para todos carregarem o vídeo (depois começa mesmo assim)
   contagem: 5,        // contagem antes do vídeo
   assistir: 90,       // tempo para assistir ao short (1:30)
   votacao: 30,        // tempo de votação

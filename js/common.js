@@ -2,8 +2,8 @@
 // Tudo deste jogo fica dentro da pasta sites/<repo> do Firebase único.
 import {
   firebaseConfig, DB_ROOT, TEMPOS, MIN_JOGADORES, MAX_JOGADORES, PALAVRAS_POR_JOGADOR
-} from "./config.js";
-import { VIDEOS } from "./videos.js";
+} from "./config.js?v=4";
+import { VIDEOS } from "./videos.js?v=4";
 
 const fb = window.firebase;
 if (!fb.apps.length) fb.initializeApp(window.FIREBASE_CONFIG || firebaseConfig);
@@ -34,6 +34,7 @@ export { VIDEOS, TEMPOS, PALAVRAS_POR_JOGADOR, MIN_JOGADORES, MAX_JOGADORES };
 const TRINTA_MIN = 30 * 60 * 1000;
 
 export const NOMES_FASE = {
+  loading: "Carregando vídeo",
   countdown: "Contagem",
   watch: "Assistindo",
   discussion: "Discussão",
@@ -138,6 +139,7 @@ export const palavrasDe = g => Object.values(g?.state?.words || {});
 function proximoEstado(st, forcar) {
   const t = agora();
   switch (st.phase) {
+    case "loading": return { ...st, phase: "countdown", endsAt: t + TEMPOS.contagem * 1000 };
     case "countdown": return { ...st, phase: "watch", endsAt: t + TEMPOS.assistir * 1000 };
     case "watch": return { ...st, phase: "discussion", endsAt: 0 };
     case "discussion": {
@@ -168,6 +170,18 @@ export function enviarPalavra(g, uid, palavra, pulou = false) {
     words.push(item);
     return { ...st, words };
   });
+}
+
+// Todos (que estão online) já carregaram o vídeo? Então começa a contagem.
+let ultimoCarregou = 0;
+export function checarTodosCarregaram(g, jogadores) {
+  const st = g?.state;
+  if (!st || st.phase !== "loading") return;
+  const presentes = g.order.filter(u => jogadores[u]?.online);
+  if (!presentes.length || !presentes.every(u => g.carregados?.[u])) return;
+  if (Date.now() - ultimoCarregou < 2000) return;
+  ultimoCarregou = Date.now();
+  avancarFase("loading").catch(() => {});
 }
 
 // Todos (que estão online) clicaram em "Iniciar votação"?
@@ -233,7 +247,7 @@ export async function tentarCriarPartida(uids, jogadores, videos) {
         order,
         turnos,
         players,
-        state: { phase: "countdown", endsAt: agora() + TEMPOS.contagem * 1000, total: turnos.length }
+        state: { phase: "loading", endsAt: agora() + TEMPOS.carregarMax * 1000, total: turnos.length }
       }
     };
   }).catch(() => null);

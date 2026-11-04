@@ -3,7 +3,7 @@ import {
   agora, mmss, esc, garantirLogin, idYoutube, linkValido, listaVideos, palavrasDe,
   avancarFase, enviarPalavra, checarProntosVotar, resultado, tentarLimpeza, limparSaidos, resumoHistorico,
   VIDEOS, FOTO_VAZIA, NOMES_FASE
-} from "./common.js";
+} from "./common.js?v=4";
 
 const $ = s => document.querySelector(s);
 const TRES_DIAS = 3 * 24 * 60 * 60 * 1000;
@@ -57,7 +57,7 @@ function tick() {
   const g = partidaAtiva();
   const st = g?.state;
   if (!st) return;
-  if (["countdown", "watch", "voting"].includes(st.phase) && agora() >= st.endsAt + 1500) {
+  if (["loading", "countdown", "watch", "voting"].includes(st.phase) && agora() >= st.endsAt + 1500) {
     avancarFase(st.phase).catch(() => {});
   }
   checarProntosVotar(g, jogadores);

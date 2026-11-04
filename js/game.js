@@ -63,9 +63,110 @@ function minhaPartida() {
 
 function mostrar(id) {
   document.querySelectorAll(".tela").forEach(t => { t.hidden = t.id !== id; });
+  $("#tela-video").classList.remove("pre-carregando");
   $("#carregando").hidden = true;
-  if (id !== "tela-video") $("#video-frame").src = "about:blank";
+  if (id === "tela-contagem" && video.id) {
+    // o vídeo continua carregando atrás da contagem
+    $("#tela-video").hidden = false;
+    $("#tela-video").classList.add("pre-carregando");
+  }
+  if (id !== "tela-video" && id !== "tela-contagem") pararVideo();
 }
+
+// ============================================================
+//  Vídeo: carrega durante a contagem e dá play quando ela acaba
+//  (assim ninguém começa atrasado esperando o YouTube carregar)
+// ============================================================
+const video = { player: null, pronto: false, id: "", tocar: false, inicioMs: 0, ajustar: false };
+let apiYT = null;
+function carregarApiYT() {
+  if (apiYT) return apiYT;
+  apiYT = new Promise((ok, falha) => {
+    if (window.YT?.Player) return ok();
+    const antes = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => { antes?.(); ok(); };
+    const s = document.createElement("script");
+    s.src = "https://www.youtube.com/iframe_api";
+    s.onerror = falha;
+    document.head.appendChild(s);
+    setTimeout(() => falha(new Error("YouTube não carregou")), 8000);
+  });
+  return apiYT;
+}
+carregarApiYT().catch(() => {});
+
+function iframeSimples(id) { // reserva se a API do YouTube não carregar
+  const el = $("#video-frame");
+  el.outerHTML = `<iframe id="video-frame" title="Short da rodada" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen
+    src="https://www.youtube.com/embed/${id}?autoplay=1&playsinline=1&loop=1&playlist=${id}&rel=0"></iframe>`;
+}
+
+async function prepararVideo(id) {
+  if (!id || video.id === id) return;
+  video.id = id; video.tocar = false; video.pronto = false;
+  try { await carregarApiYT(); } catch (e) { return; }
+  if (video.id !== id) return;
+  const iniciar = () => {
+    // começa mudo para o navegador deixar carregar; pausa logo que tiver imagem
+    video.player.mute();
+    video.player.loadVideoById({ videoId: id, startSeconds: 0 });
+  };
+  if (video.player) { iniciar(); return; }
+  video.player = new YT.Player("video-frame", {
+    videoId: id,
+    playerVars: { playsinline: 1, rel: 0, controls: 1, modestbranding: 1 },
+    events: {
+      onReady: () => { iniciar(); },
+      onStateChange: e => {
+        if (e.data === YT.PlayerState.PLAYING && !video.tocar) {
+          video.player.pauseVideo(); video.player.seekTo(0, true); video.pronto = true;
+        }
+        if (e.data === YT.PlayerState.PLAYING && video.tocar && video.ajustar) {
+          const seg = pontoCerto();
+          if (seg !== null) { video.ajustar = false; if (seg > 1) video.player.seekTo(seg, true); }
+        }
+        if (e.data === YT.PlayerState.ENDED && video.tocar) { video.player.seekTo(0, true); video.player.playVideo(); }
+      }
+    }
+  });
+}
+
+// ponto do vídeo em que todo mundo está agora (null = duração ainda desconhecida)
+function pontoCerto() {
+  const seg = Math.max(0, (agora() - (video.inicioMs || agora())) / 1000);
+  if (seg < 0.5) return 0;
+  const dur = video.player?.getDuration?.() || 0;
+  return dur > 0 ? seg % dur : null;
+}
+
+// inicioMs = horário (do servidor) em que o vídeo começou para todo mundo
+function tocarVideo(id, inicioMs) {
+  if (video.id !== id) prepararVideo(id);
+  video.tocar = true;
+  const p = video.player;
+  if (p?.playVideo && video.id === id) {
+    video.inicioMs = inicioMs;
+    const seg = pontoCerto();
+    // sem a duração ainda (acabou de carregar): ajusta quando começar a tocar
+    video.ajustar = seg === null;
+    p.seekTo(seg || 0, true); p.unMute(); p.setVolume(100); p.playVideo();
+  } else if (!window.YT?.Player) {
+    carregarApiYT().then(() => { if (video.tocar) setTimeout(() => tocarVideo(id, inicioMs), 300); })
+      .catch(() => { if (video.tocar && video.id === id) iframeSimples(id); });
+  } else {
+    setTimeout(() => { if (video.tocar && video.id === id) tocarVideo(id, inicioMs); }, 300);
+  }
+}
+
+function pararVideo() {
+  if (!video.id) return;
+  video.tocar = false; video.id = ""; video.pronto = false;
+  try { video.player?.stopVideo?.(); } catch (e) {}
+  const el = $("#video-frame");
+  if (el && el.tagName === "IFRAME" && !video.player) el.src = "about:blank";
+}
+
+const idDoMeuVideo = g => idYoutube(eu === g.impostor ? g.videos.impostor : g.videos.normal);
 
 // ============================================================
 //  Render geral
@@ -339,15 +440,13 @@ function montarFase(g, fase) {
   const muitos = g.order.length > 5 ? "muitos" : "";
   switch (fase) {
     case "countdown":
+      prepararVideo(idDoMeuVideo(g));
       mostrar("tela-contagem");
       break;
-    case "watch": {
+    case "watch":
       mostrar("tela-video");
-      const id = idYoutube(eu === g.impostor ? g.videos.impostor : g.videos.normal);
-      $("#video-frame").src =
-        `https://www.youtube.com/embed/${id}?autoplay=1&playsinline=1&loop=1&playlist=${id}&rel=0`;
+      tocarVideo(idDoMeuVideo(g), (g.state.endsAt || agora()) - TEMPOS.assistir * 1000);
       break;
-    }
     case "discussion":
       mostrar("tela-discussao");
       palavrasMostradas = -1;

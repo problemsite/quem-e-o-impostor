@@ -29,6 +29,6 @@ export const TEMPOS = {
 };
 
 // 4) Jogadores
-export const MIN_JOGADORES = 3;
+export const MIN_JOGADORES = 2;
 export const MAX_JOGADORES = 10;
 export const PALAVRAS_POR_JOGADOR = 2;

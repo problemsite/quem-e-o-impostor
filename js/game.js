@@ -3,7 +3,7 @@ import {
   agora, mmss, esc, garantirLogin, idYoutube, podeSubstituir, listaVideos, palavrasDe,
   avancarFase, enviarPalavra, checarProntosVotar, checarTodosCarregaram, resultado, tentarCriarPartida, tentarLimpeza, limparSaidos,
   MIN_JOGADORES, MAX_JOGADORES, PALAVRAS_POR_JOGADOR, TEMPOS, FOTO_VAZIA
-} from "./common.js?v=4";
+} from "./common.js?v=5";
 
 const $ = s => document.querySelector(s);
 
@@ -311,7 +311,7 @@ function listaProntos() {
 }
 
 // Regras para começar:
-// - precisa de pelo menos 4 prontos;
+// - precisa de pelo menos 3 prontos;
 // - se alguém na sala ainda não clicou em Começar, espera essa pessoa;
 // - se alguém saiu da sala há pouco, espera 10 s para ver se ela volta
 //   (se voltar, espera ela clicar);

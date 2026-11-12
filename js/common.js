@@ -2,8 +2,8 @@
 // Tudo deste jogo fica dentro da pasta sites/<repo> do Firebase único.
 import {
   firebaseConfig, DB_ROOT, TEMPOS, MIN_JOGADORES, MAX_JOGADORES, PALAVRAS_POR_JOGADOR
-} from "./config.js?v=4";
-import { VIDEOS } from "./videos.js?v=4";
+} from "./config.js?v=5";
+import { VIDEOS } from "./videos.js?v=5";
 
 const fb = window.firebase;
 if (!fb.apps.length) fb.initializeApp(window.FIREBASE_CONFIG || firebaseConfig);

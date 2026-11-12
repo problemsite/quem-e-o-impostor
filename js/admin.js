@@ -3,7 +3,7 @@ import {
   agora, mmss, esc, garantirLogin, idYoutube, linkValido, listaVideos, palavrasDe,
   avancarFase, enviarPalavra, checarProntosVotar, resultado, tentarLimpeza, limparSaidos, resumoHistorico,
   VIDEOS, FOTO_VAZIA, NOMES_FASE
-} from "./common.js?v=4";
+} from "./common.js?v=5";
 
 const $ = s => document.querySelector(s);
 const TRES_DIAS = 3 * 24 * 60 * 60 * 1000;

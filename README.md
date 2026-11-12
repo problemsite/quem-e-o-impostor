@@ -1,6 +1,6 @@
 # Quem é o impostor?
 
-Jogo para 4 a 10 pessoas: todos veem o mesmo short, menos 1, que vê um diferente. Cada um escreve uma palavra por vez (duas voltas) e depois todos votam em quem acham que é o impostor.
+Jogo para 3 a 10 pessoas: todos veem o mesmo short, menos 1, que vê um diferente. Cada um escreve uma palavra por vez (duas voltas) e depois todos votam em quem acham que é o impostor.
 
 ## Onde fica
 
@@ -37,7 +37,7 @@ Mudou código? Aumente o `?v=` nos `<script>`/CSS do `index.html` e do `ADM/inde
 
 ## Regras que o jogo segue
 
-- Mínimo de 4 e máximo de 10 jogadores. Começa na hora em que todos que estão na sala clicam em Começar
+- Mínimo de 3 e máximo de 10 jogadores. Começa na hora em que todos que estão na sala clicam em Começar
   (com pelo menos 4). Se alguém sai da sala antes, o jogo espera 10 s para ver se a pessoa volta;
   se voltar, espera ela clicar. Qualquer um pode clicar em Cancelar para parar a contagem.
 - Contagem de 5 s, 1:30 de vídeo, discussão em turnos (2 palavras por pessoa), 30 s de votação.

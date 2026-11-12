@@ -38,7 +38,7 @@ Mudou código? Aumente o `?v=` nos `<script>`/CSS do `index.html` e do `ADM/inde
 ## Regras que o jogo segue
 
 - Mínimo de 3 e máximo de 10 jogadores. Começa na hora em que todos que estão na sala clicam em Começar
-  (com pelo menos 4). Se alguém sai da sala antes, o jogo espera 10 s para ver se a pessoa volta;
+  (com pelo menos 3). Se alguém sai da sala antes, o jogo espera 10 s para ver se a pessoa volta;
   se voltar, espera ela clicar. Qualquer um pode clicar em Cancelar para parar a contagem.
 - Contagem de 5 s, 1:30 de vídeo, discussão em turnos (2 palavras por pessoa), 30 s de votação.
 - A ordem das fotos é sorteada a cada partida, e a fala segue essa ordem nas duas voltas.
